@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KW Explore • Market Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{ --kw-red:#C70000; --ink:#f2f2f2; --muted:#9aa0a6; --bg:#0b0b0c; --card:#121214; --border:#262626; --tab:#161616; --tab-grey:#232323; }
+  *{ box-sizing: border-box; }
+  body{ margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--ink); }
+  header{ background:var(--card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; }
+  .wrap{ max-width:1200px; margin:0 auto; padding:16px; }
+  .title{ display:flex; align-items:center; gap:12px; }
+  .logoWrap{ display:flex; align-items:center; gap:10px; }
+  .logo{ height:34px; display:block; }
+  .kwFallback{ width:34px; height:34px; border-radius:8px; background:var(--kw-red); display:none; }
+  h1{ font-size:20px; margin:0; }
+  .grid{ display:grid; grid-template-columns: 280px 1fr; gap:16px; margin-top:16px; }
+  @media (max-width: 960px){ .grid{ grid-template-columns: 1fr; } }
+  .panel{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+  .panel h2{ font-size:16px; margin:0 0 10px; }
+  label{ font-size:12px; color:var(--muted); display:block; margin:10px 0 4px; }
+  select, button{ width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:#0f0f10; color:var(--ink); }
+  button.primary{ background:var(--kw-red); color:#fff; border:none; font-weight:600; }
+  .row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .pill{ display:inline-block; font-size:11px; padding:3px 8px; background:#1f1f1f; color:#ddd; border-radius:999px; margin:0 6px 6px 0; }
+  .cards{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  @media (max-width: 1200px){ .cards{ grid-template-columns: 1fr; } }
+  table{ width:100%; border-collapse: collapse; font-size:13px; }
+  th, td{ padding:8px 10px; border-bottom:1px solid var(--border); }
+  th{ text-align:left; background:#0f0f10; position:sticky; top:0; color:var(--ink); }
+  .actions{ display:flex; gap:8px; }
+  .muted{ color:var(--muted); }
+  footer{ text-align:center; color:var(--muted); font-size:12px; padding:24px 0; }
+  .badge{ background:#fff3f3; color:var(--kw-red); border:1px solid #ffd6d6; padding:2px 6px; border-radius:6px; font-size:11px; }
+  .sep{ height:1px; background:#222; margin:10px 0 14px; }
+  .chartBox{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+  .tabs{ display:flex; gap:8px; margin:8px 0 0; }
+  .tab{ appearance:none; border:1px solid var(--border); background:var(--tab); color:var(--ink); padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600; }
+  .tab:hover{ background:var(--tab-grey); }
+  .tab.active{ background:var(--kw-red); border-color:#7f0000; color:#fff; }
+  .tabpane[hidden]{ display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="title">
+      <div class="logoWrap">
+        <!-- Put this PNG in your repo root (URL-encoded spaces/ampersand) -->
+        <img id="kwLogo" class="logo" src="KW%20Explore%20RED%20%26%20WHITE.png" alt="KW Explore" />
+        <div class="kwFallback" aria-hidden="true"></div>
+      </div>
+      <div>
+        <h1>KW Explore • Market Intelligence <span id="mockBadge" style="display:none; font-size:12px; margin-left:8px;" class="badge">Mock data</span></h1>
+        <div class="muted" id="updatedAt">Loading…</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="grid">
+    <!-- Filters -->
+    <aside class="panel">
+      <h2>Filters</h2>
+      <label>Suburbs (multi-select)</label>
+      <select id="suburbs" multiple size="8"></select>
+
+      <div class="row">
+        <div>
+          <label>Platform</label>
+          <select id="platform"><option>All</option></select>
+        </div>
+        <div>
+          <label>Entity Type</label>
+          <select id="entityType"><option>All</option></select>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+      <div class="actions">
+        <button class="primary" id="applyBtn">Apply</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+
+      <div style="margin-top:10px;">
+        <span class="pill">TopAgentsListings</span>
+        <span class="pill">TopAgentsSales</span>
+        <span class="pill">TopAgencies</span>
+        <span class="pill">RecruitTargets</span>
+      </div>
+
+      <div style="margin-top:10px;">
+        <span class="badge">Tip</span>
+        <span class="muted">Hold Ctrl/Cmd to select multiple suburbs.</span>
+      </div>
+    </aside>
+
+    <!-- Dashboard -->
+    <section>
+      <div class="chartBox">
+        <h2 style="margin:0 0 10px;">Top Sales Agents by Suburb</h2>
+        <canvas id="salesChart" height="100"></canvas>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-target="tabSales">Sales</button>
+        <button class="tab" data-target="tabListings">Listings</button>
+        <button class="tab" data-target="tabAgencies">Agencies</button>
+        <button class="tab" data-target="tabRecruit">Recruit</button>
+      </div>
+      <div class="cards" style="margin-top:16px;">
+        <div class="panel tabpane" id="tabListings" hidden>
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Top Agents — Listings</h2>
+            <button id="dlListings">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblListings">
+              <thead><tr><th>Suburb</th><th>Agent</th><th>Agency</th><th>Active Listings</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel tabpane" id="tabSales">
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Top Agents — Sales</h2>
+            <button id="dlSales">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblSales">
+              <thead><tr><th>Suburb</th><th>Agent</th><th>Agency</th><th>Sold</th><th>Under Offer</th><th>Total Sales</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel tabpane" id="tabAgencies" hidden>
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Top Agencies</h2>
+            <button id="dlAgencies">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblAgencies">
+              <thead><tr><th>Suburb</th><th>Top Agency (Active)</th><th>Active Listings</th><th>Top Agency (Sales)</th><th>Total Sales</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel tabpane" id="tabRecruit" hidden>
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Recruit Targets</h2>
+            <button id="dlRecruit">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblRecruit">
+              <thead><tr><th>Suburb</th><th>Agent</th><th>Agency</th><th>Active</th><th>Sold</th><th>U/O</th><th>Total Sales</th><th>Strength</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="muted" style="margin-top:6px;">Excludes KW brands automatically.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  Built for KW Explore • Update the API URL in this file to your Apps Script Web App.
+</footer>
+
+<script>
+/** ===== CONFIG ===== */
+/* Your live Apps Script Web App URL */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxhRgyiwrW0SWBTYZCNME9HwH-oBeLiuhnqlNkOUQu0aNzUkz4H66jABaIeXRV8gPOD/exec';
+// ---- Mock mode (for previews or when network is blocked) ----
+const USE_MOCK = new URLSearchParams(location.search).has('mock');
+const MOCK = { success: true, updatedAt: new Date().toISOString(),
+  filters: { suburbs:['Paulshof','Lonehill','Beverley'], platforms:['Property24','PrivateProperty'], entityTypes:['Agent','Agency'], metrics:['Active Listings','Sold','Under Offer','Total Sales'] },
+  summaries: {
+    TopAgentsListings:[{suburb:'Paulshof',agent:'Lebo Nkosi',agency:'Brand X',activeListings:5},{suburb:'Lonehill',agent:'Carla Meyer',agency:'Brand Y',activeListings:4}],
+    TopAgentsSales:[{suburb:'Paulshof',agent:'Lebo Nkosi',agency:'Brand X',sold:3,underOffer:2,totalSales:5},{suburb:'Lonehill',agent:'Carla Meyer',agency:'Brand Y',sold:2,underOffer:1,totalSales:3}],
+    TopAgencies:[{suburb:'Paulshof',topAgencyActive:'Brand X',activeListings:12,topAgencySales:'Brand Z',totalSales:9}],
+    RecruitTargets:[{suburb:'Paulshof',agent:'Thabo D',agency:'Brand Z',activeListings:3,sold:2,underOffer:1,totalSales:3,strength:'Listings'}]
+  }
+};
+
+/** ===== APP STATE ===== */
+const App = {
+  raw: null,
+  chart: null,
+  currentFilters: { suburbs: [], platform: 'All', entityType: 'All' },
+
+  // JSONP loader (avoids CORS issues on Netlify/GitHub Pages)
+  jsonp(url, cbName) {
+    return new Promise((resolve) => {
+      const id = 'cb_' + Math.random().toString(36).slice(2);
+      window[id] = (data) => { resolve(data); delete window[id]; script.remove(); };
+      const script = document.createElement('script');
+      script.src = url + (url.includes('?') ? '&' : '?') + `${cbName}=${id}`;
+      script.onerror = () => {
+        resolve({ success:false, error:'JSONP failed to load' });
+        delete window[id];
+        script.remove();
+      };
+      document.body.appendChild(script);
+    });
+  },
+
+  // Fallback to normal fetch if backend doesn’t support JSONP but does set CORS
+  async fetchJSON(url) {
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      return { success:false, error:String(e) };
+    }
+  },
+
+  async fetchData() {
+    if (USE_MOCK) { App.raw = MOCK; App.renderAll(); return; }
+    const { suburbs, platform, entityType } = App.currentFilters;
+    const params = new URLSearchParams({
+      action: 'all',
+      suburbs: suburbs.join(','),
+      platform,
+      entityType
+    });
+    const base = `${GAS_URL}?${params.toString()}`;
+
+    // Try JSONP first
+    let data = await App.jsonp(base, 'callback');
+
+    // If JSONP failed, try normal JSON fetch (requires CORS headers from backend)
+    if (!data || data.success === false) {
+      data = await App.fetchJSON(base);
+    }
+
+    if (!data || data.success === false) {
+      document.getElementById('updatedAt').textContent = 'Error loading data (try ?mock=1)';
+      console.error('API error:', data && data.error);
+      return;
+    }
+
+    App.raw = data;
+    App.renderAll();
+  },
+
+  renderAll() {
+    const d = App.raw;
+    document.getElementById('updatedAt').textContent = `Updated ${new Date(d.updatedAt).toLocaleString()}`;
+    document.getElementById('mockBadge').style.display = USE_MOCK ? 'inline-block' : 'none';
+
+    // Filters
+    App.populateFilters(d.filters);
+
+    // Tables
+    App.renderTable('tblListings', d.summaries.TopAgentsListings, ['suburb','agent','agency','activeListings']);
+    App.renderTable('tblSales', d.summaries.TopAgentsSales, ['suburb','agent','agency','sold','underOffer','totalSales']);
+    App.renderTable('tblAgencies', d.summaries.TopAgencies, ['suburb','topAgencyActive','activeListings','topAgencySales','totalSales']);
+    App.renderTable('tblRecruit', d.summaries.RecruitTargets, ['suburb','agent','agency','activeListings','sold','underOffer','totalSales','strength']);
+
+    // Chart from TopAgentsSales
+    App.drawSalesChart(d.summaries.TopAgentsSales);
+  },
+
+  populateFilters(f) {
+    const subs = document.getElementById('suburbs');
+    if (!subs.options.length) {
+      f.suburbs.forEach(s => subs.add(new Option(s, s)));
+      const plat = document.getElementById('platform');
+      plat.innerHTML = '<option>All</option>' + f.platforms.map(p=>`<option>${p}</option>`).join('');
+      const et = document.getElementById('entityType');
+      et.innerHTML = '<option>All</option>' + f.entityTypes.map(p=>`<option>${p}</option>`).join('');
+    }
+  },
+
+  drawSalesChart(rows) {
+    const labels = rows.map(r => `${r.suburb} — ${r.agent}`);
+    const values = rows.map(r => r.totalSales);
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    if (App.chart) App.chart.destroy();
+    App.chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Total Sales', data: values }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color:'#e0e0e0' }, grid: { color: '#222' } },
+          y: { beginAtZero: true, ticks: { color:'#e0e0e0' }, grid: { color: '#222' } }
+        }
+      }
+    });
+  },
+
+  renderTable(id, rows, cols) {
+    const tb = document.querySelector(`#${id} tbody`);
+    tb.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      cols.forEach(c => {
+        const td = document.createElement('td');
+        td.textContent = r[c] == null ? '' : r[c];
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  },
+
+  downloadCSV(key) {
+    if (!App.raw) return;
+    const map = {
+      TopAgentsListings: ['suburb','agent','agency','activeListings'],
+      TopAgentsSales   : ['suburb','agent','agency','sold','underOffer','totalSales'],
+      TopAgencies      : ['suburb','topAgencyActive','activeListings','topAgencySales','totalSales'],
+      RecruitTargets   : ['suburb','agent','agency','activeListings','sold','underOffer','totalSales','strength']
+    };
+    const cols = map[key];
+    const rows = App.raw.summaries[key] || [];
+    const csv = [cols.join(',')].concat(rows.map(r => cols.map(c => '"' + String(r[c]??'').replace(/"/g,'""') + '"').join(','))).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${key}.csv` });
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+};
+
+// Theme defaults for Chart.js on dark UI
+if (window.Chart && Chart.defaults) { Chart.defaults.color = '#e5e5e5'; }
+
+// Tabs & downloads
+function initTabs(){
+  const tabs = document.querySelectorAll('.tab');
+  const panes = document.querySelectorAll('.tabpane');
+  tabs.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      tabs.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.getAttribute('data-target');
+      panes.forEach(p => p.hidden = (p.id !== target));
+    });
+  });
+}
+function initDownloads(){
+  const map = { dlListings:'TopAgentsListings', dlSales:'TopAgentsSales', dlAgencies:'TopAgencies', dlRecruit:'RecruitTargets' };
+  Object.entries(map).forEach(([id,key])=>{
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', ()=> App.downloadCSV(key));
+  });
+}
+
+// Logo fallback (no inline handlers)
+window.addEventListener('load', ()=>{
+  const img = document.getElementById('kwLogo');
+  function fallback(){
+    if (!img) return;
+    img.style.display = 'none';
+    const fb = document.querySelector('.kwFallback');
+    if (fb) fb.style.display = 'block';
+  }
+  // If file missing or blocked, error may have fired before this handler;
+  // check synchronously as well.
+  if (!img.complete || img.naturalWidth === 0) fallback();
+  img.addEventListener('error', fallback);
+});
+
+initTabs();
+initDownloads();
+
+// UI events
+document.getElementById('applyBtn').addEventListener('click', ()=>{
+  const suburbs = Array.from(document.getElementById('suburbs').selectedOptions).map(o=>o.value);
+  const platform = document.getElementById('platform').value;
+  const entityType = document.getElementById('entityType').value;
+  App.currentFilters = { suburbs, platform, entityType };
+  App.fetchData();
+});
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  document.getElementById('suburbs').selectedIndex = -1;
+  document.getElementById('platform').value = 'All';
+  document.getElementById('entityType').value = 'All';
+  App.currentFilters = { suburbs: [], platform: 'All', entityType: 'All' };
+  App.fetchData();
+});
+
+// First load
+App.fetchData();
+window.App = App; // expose for CSV buttons
+
+// ===== SIMPLE TESTS (run with ?mock=1&test=1) =====
+(function selfTests(){
+  const usp = new URLSearchParams(location.search);
+  if (!(USE_MOCK && usp.has('test'))) return;
+  console.info('Running self-tests with mock data...');
+  const s = MOCK.summaries;
+  console.assert(Array.isArray(s.TopAgentsListings), 'TopAgentsListings array');
+  console.assert(Array.isArray(s.TopAgentsSales), 'TopAgentsSales array');
+  console.assert(Array.isArray(s.TopAgencies), 'TopAgencies array');
+  console.assert(Array.isArray(s.RecruitTargets), 'RecruitTargets array');
+  console.assert(typeof GAS_URL === 'string' && GAS_URL.length > 10, 'GAS_URL configured');
+
+  // DOM smoke tests after initial render
+  setTimeout(()=>{
+    const salesRows = document.querySelectorAll('#tblSales tbody tr').length;
+    const listRows  = document.querySelectorAll('#tblListings tbody tr').length;
+    const agRows    = document.querySelectorAll('#tblAgencies tbody tr').length;
+    const recRows   = document.querySelectorAll('#tblRecruit tbody tr').length;
+    console.assert(salesRows > 0, 'Sales table has rows');
+    console.assert(listRows  > 0, 'Listings table has rows');
+    console.assert(agRows    > 0, 'Agencies table has rows');
+    console.assert(recRows   > 0, 'Recruit table has rows');
+    console.assert(!!window.App.chart, 'Chart instance created');
+
+    // Tab switch test
+    document.querySelector('.tab[data-target="tabListings"]').click();
+    console.assert(!document.getElementById('tabListings').hidden, 'Listings tab shows');
+    console.assert(document.getElementById('tabSales').hidden, 'Sales tab hides');
+  }, 300);
+})();
+</script>
+</body>
+</html>
