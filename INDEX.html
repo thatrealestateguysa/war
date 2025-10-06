@@ -1,185 +1,178 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset='utf-8'/>
-  <meta name='viewport' content='width=device-width,initial-scale=1'/>
-  <title>KW Explore — Dashboard</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>KW Explore — Market Dashboard</title>
   <style>
-    :root{ --bg:#0b0b0e; --panel:#16161a; --ink:#fff; --sub:#bbb; --a1:#FF3B30; --a2:#FF9500; --kw-red:#C70000;}
-    html,body{ height:100%; margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:Inter,system-ui,Arial,sans-serif; overflow: hidden;}
-    .wrap{ padding:12px; height: calc(100% - 24px); display: flex; flex-direction: column; }
-    .row{ display:grid; grid-template-columns:repeat(12,1fr); gap:12px; }
-    .card{ background:var(--panel); border:1px solid #2a2a2a; border-radius:14px; padding:12px; display: flex; flex-direction: column;}
-    .kpi{ font-weight:800; font-size:44px; background:linear-gradient(90deg,var(--a1),var(--a2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
-    .muted{ color:var(--sub); font-size:12px; }
-    .hdr{ display:flex; align-items:center; justify-content:space-between; margin:4px 0 10px; flex-wrap: wrap; gap: 8px;}
-    .pill{ font-size:11px; padding:4px 8px; border-radius:999px; background:linear-gradient(90deg,var(--a1),var(--a2)); color:#000; font-weight:600; }
-    table{ width:100%; border-collapse:collapse; font-size:13px; }
-    th,td{ padding:8px 6px; border-bottom:1px solid #2a2a2a; text-align: left; }
-    tr:hover{ background:rgba(255,59,48,0.08); }
-    select,input,button{ background:#111827; color:#fff; border:1px solid var(--kw-red); border-radius:10px; padding:6px 10px; }
-    button { cursor: pointer; background-color: var(--kw-red); font-weight: bold; }
-    .col-4{ grid-column:span 12; } .col-8{ grid-column:span 12; }
-    .table-container { flex-grow: 1; overflow-y: auto; }
-    @media(min-width:900px){ .col-4{ grid-column:span 4; } .col-8{ grid-column:span 8; } }
-    .ellipsis { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    :root{ --bg:#0b0b0e; --panel:#16161a; --ink:#fff; --sub:#bbb; --kw-red:#C70000; }
+    html,body{ height:100%; margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; }
+    .wrap{ max-width:1200px; margin:0 auto; padding:16px; }
+    header{ border-bottom:1px solid #2a2a2a; padding-bottom:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+    .card{ background:var(--panel); border:1px solid #2a2a2a; border-radius:14px; padding:16px; }
+    h1{ font-size:24px; margin:0; }
+    .controls{ display:flex; gap:12px; align-items:center; }
+    label{ color:var(--sub); font-size:12px; }
+    select{ background:#111827; color:#fff; border:1px solid var(--kw-red); border-radius:10px; padding:8px 12px; }
+    .grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+    @media(min-width:900px){ .grid{ grid-template-columns:1fr 1fr; } }
+    table{ width:100%; border-collapse:collapse; font-size:14px; }
+    th,td{ padding:10px 8px; border-bottom:1px solid #2a2a2a; text-align: left; }
+    th{ color:var(--sub); }
   </style>
-  <script type='text/javascript' src='https://www.gstatic.com/charts/loader.js'></script>
-  <script>
-    // ## CONFIGURATION ##
-    // Final, working Web App URL
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwFfPzPdIwPd5sNOKIuc49cuBPxpYcYNYRnc7IL9iTi5e_dsjBWfd6CpdLNT5RlhXnQ/exec';
-
-    google.charts.load('current', {'packages':['corechart','bar']});
-
-    function $(id){ return document.getElementById(id); }
-    function setLoading(is){ $('loading').style.display = is ? 'block' : 'none'; }
-    function setError(msg){ var el=$('error'); el.textContent = msg || ''; el.style.display = msg ? 'block' : 'none'; }
-
-    async function fetchData(){
-      setLoading(true); setError('');
-      const muni = $('municipality').value || '';
-      const url = GAS_URL + (muni ? '?municipality=' + encodeURIComponent(muni) : '');
-
-      try {
-        const res = await fetch(url, { mode: 'cors' });
-        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-        const payload = await res.json();
-        if (payload.success === false) throw new Error(payload.error || 'The backend script returned an error.');
-        renderAll(payload);
-      } catch (err) {
-        setLoading(false);
-        setError("Error fetching data: " + String(err));
-        console.error(err);
-      }
-    }
-
-    function renderAll(payload){
-      setLoading(false);
-      try{
-        const date = payload.date ? new Date(payload.date).toLocaleDateString('en-ZA', { timeZone: 'UTC'}) : '—';
-        const agencies = payload.agencies || [];
-        const agents = payload.agents || [];
-        window.__lastAgencies = agencies; window.__lastAgents = agents;
-
-        const muniSelect = $('municipality');
-        if (muniSelect.options.length <= 1 && payload.municipalities && payload.municipalities.length > 0) {
-            payload.municipalities.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m; opt.textContent = m;
-                muniSelect.appendChild(opt);
-            });
-        }
-        $('latest').textContent = date;
-
-        // KPIs
-        let kw = agencies.find(a => (a.agency||'').toLowerCase().includes('keller williams explore')) || { total: 0 };
-        $('kpi-kw').textContent = kw.total;
-
-        let topCompetitor = agencies.find(a => !(a.agency||'').toLowerCase().includes('keller williams explore')) || { agency: '—', total: 0 };
-        $('kpi-top-competitor-name').textContent = topCompetitor.agency;
-        $('kpi-top-competitor-val').textContent  = topCompetitor.total;
-
-        let topAgent = agents[0] || { agent: '—', agency: '—', total: 0 };
-        $('kpi-top-agent-name').textContent = topAgent.agent;
-        $('kpi-top-agent-agency').textContent = topAgent.agency;
-        $('kpi-top-agent-val').textContent = topAgent.total;
-        
-        // Bar Chart: Top 10 Agencies
-        const barData = new google.visualization.DataTable();
-        barData.addColumn('string','Agency');
-        barData.addColumn('number','Listings');
-        const top10Agencies = agencies.slice(0, 10);
-        top10Agencies.forEach(item => barData.addRow([item.agency, Number(item.total||0)]));
-        const barOpts = {
-          legend:{position:'none'}, backgroundColor:'transparent',
-          chartArea:{ left:120, top:20, right:20, bottom:60 },
-          hAxis:{ textStyle:{color:'#fff'}, gridlines: { color: 'transparent' } },
-          vAxis:{ textStyle:{color:'#fff'} }, colors:['#FF6A00']
-        };
-        new google.visualization.BarChart($('bar')).draw(barData, barOpts);
-
-        // Table: Top Agents
-        applyAgentFilter();
-      } catch(e){ console.error(e); setError("Error rendering data: " + String(e.stack)); }
-    }
-
-    function applyAgentFilter(){
-      const agents = window.__lastAgents || [];
-      const q = ($('search').value || '').toLowerCase();
-      const filtered = q ? agents.filter(a =>
-          (a.agent||'').toLowerCase().includes(q) || (a.agency||'').toLowerCase().includes(q)
-      ) : agents;
-
-      const tbody = $('agent-tbody'); tbody.innerHTML='';
-      const top50Agents = filtered.slice(0, 50);
-      top50Agents.forEach((item, index) => {
-        let tr = document.createElement('tr');
-        tr.innerHTML = `<td>${index + 1}</td><td>${item.agent||''}</td><td>${item.agency||''}</td><td>${item.total||0}</td>`;
-        tbody.appendChild(tr);
-      });
-    }
-
-    document.addEventListener('DOMContentLoaded', function(){
-      $('refresh').addEventListener('click', fetchData);
-      $('municipality').addEventListener('change', fetchData);
-      $('search').addEventListener('input', applyAgentFilter);
-      google.charts.setOnLoadCallback(fetchData);
-    });
-  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="wrap">
-    <div class="card" style="margin-bottom:10px;">
-      <div class="hdr">
-        <div style="display:flex; gap:8px; align-items:center;">
-          <label class="muted">Filter by Municipality</label>
-          <select id="municipality"><option value="">All Municipalities</option></select>
-        </div>
-        <div class="pill">Latest Data: <span id="latest">—</span></div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <input id="search" placeholder="Search agents..." />
-          <button id="refresh">Refresh</button>
-        </div>
+    <header>
+      <div>
+        <h1>Market Dashboard</h1>
+        <div id="updatedAt" style="color:var(--sub); font-size:12px;">Loading...</div>
       </div>
-      <div id="loading" class="muted" style="display:none;">Loading live data…</div>
-      <div id="error" style="display:none; color:#ff6b6b; font-size:12px; white-space: pre-wrap;"></div>
-    </div>
+      <div class="controls">
+        <label for="suburbFilter">Filter by Area</label>
+        <select id="suburbFilter">
+          <option value="All">All Areas</option>
+        </select>
+      </div>
+    </header>
 
-    <div class="row" style="margin-bottom:10px;">
-      <div class="card col-4">
-        <div class="muted">KW Explore Listings</div>
-        <div id="kpi-kw" class="kpi">0</div>
+    <div class="grid">
+      <div class="card">
+        <h2>Top 10 Agencies</h2>
+        <canvas id="agenciesChart"></canvas>
       </div>
-      <div class="card col-4">
-        <div class="muted">Top Competitor Agency</div>
-        <div id="kpi-top-competitor-name" class="ellipsis" style="font-size:18px; font-weight:600;">—</div>
-        <div id="kpi-top-competitor-val" class="kpi" style="font-size:36px;">—</div>
-      </div>
-      <div class="card col-4">
-        <div class="muted">Top Overall Agent</div>
-        <div id="kpi-top-agent-name" class="ellipsis" style="font-size:18px; font-weight:600;">—</div>
-        <div id="kpi-top-agent-agency" class="muted ellipsis" style="margin-top:-4px;">—</div>
-        <div id="kpi-top-agent-val" class="kpi" style="font-size:36px;">—</div>
-      </div>
-    </div>
-
-    <div class="row" style="flex-grow: 1; min-height: 0;">
-      <div class="card col-8">
-        <div class="hdr"><div>Top 10 Agencies by Listings</div></div>
-        <div id="bar" style="height:100%;"></div>
-      </div>
-      <div class="card col-4">
-        <div class="hdr"><div>Top Agents by Listings</div></div>
-         <div class="table-container">
-          <table>
-            <thead><tr><th>#</th><th>Agent</th><th>Agency</th><th>Listings</th></tr></thead>
-            <tbody id="agent-tbody"></tbody>
-          </table>
+      <div class="card">
+        <h2>Top 10 Agents</h2>
+        <div style="max-height:300px; overflow-y:auto;">
+            <table>
+              <thead><tr><th>#</th><th>Agent</th><th>Agency</th><th>Listings</th></tr></thead>
+              <tbody id="agentsTableBody"></tbody>
+            </table>
         </div>
       </div>
     </div>
-
   </div>
+
+  <script>
+    // ## CONFIGURATION ##
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzpUpsa_HnhJLhwo1bIyXl-dYXBrChDA2iSp8aw69pC_CaNyZkpNWpuVt-KNO5JFxsfww/exec';
+
+    const App = {
+      data: null,
+      agenciesChart: null,
+
+      async init() {
+        document.getElementById('suburbFilter').addEventListener('change', () => this.render());
+        try {
+          const res = await fetch(GAS_URL);
+          if (!res.ok) throw new Error('Network response was not ok.');
+          this.data = await res.json();
+          if (!this.data.success) throw new Error(this.data.error);
+          this.populateFilters();
+          this.render();
+        } catch (error) {
+          document.getElementById('updatedAt').textContent = `Error: ${error.message}`;
+          console.error('Failed to fetch data:', error);
+        }
+      },
+
+      populateFilters() {
+        const filter = document.getElementById('suburbFilter');
+        this.data.suburbs.forEach(suburb => {
+          const option = document.createElement('option');
+          option.value = suburb;
+          option.textContent = suburb;
+          filter.appendChild(option);
+        });
+      },
+
+      render() {
+        if (!this.data) return;
+        document.getElementById('updatedAt').textContent = `Data updated: ${new Date(this.data.updatedAt).toLocaleString()}`;
+        
+        const selectedSuburb = document.getElementById('suburbFilter').value;
+
+        // Filter data based on selection
+        const filteredAgencies = (selectedSuburb === 'All')
+          ? this.aggregateTotals(this.data.topAgencies, 'agency')
+          : this.data.topAgencies.filter(a => a.suburb === selectedSuburb).sort((a, b) => b.total - a.total);
+        
+        const filteredAgents = (selectedSuburb === 'All')
+          ? this.aggregateTotals(this.data.topAgents, 'agent')
+          : this.data.topAgents.filter(a => a.suburb === selectedSuburb).sort((a, b) => b.total - a.total);
+        
+        this.renderAgenciesChart(filteredAgencies.slice(0, 10));
+        this.renderAgentsTable(filteredAgents.slice(0, 10));
+      },
+
+      aggregateTotals(items, keyField) {
+        const totals = new Map();
+        items.forEach(item => {
+          const key = (keyField === 'agent') ? `${item.agent}|${item.agency}` : item.agency;
+          totals.set(key, (totals.get(key) || 0) + item.total);
+        });
+        return [...totals.entries()].map(([key, total]) => {
+          if (keyField === 'agent') {
+            const [agent, agency] = key.split('|');
+            return { agent, agency, total };
+          }
+          return { agency: key, total };
+        }).sort((a, b) => b.total - a.total);
+      },
+
+      renderAgenciesChart(agencies) {
+        const ctx = document.getElementById('agenciesChart').getContext('2d');
+        const labels = agencies.map(a => a.agency);
+        const data = agencies.map(a => a.total);
+
+        if (this.agenciesChart) {
+          this.agenciesChart.destroy();
+        }
+        this.agenciesChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Active Listings',
+              data: data,
+              backgroundColor: 'rgba(199, 0, 0, 0.6)',
+              borderColor: 'rgba(199, 0, 0, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: '#fff' }, grid: { color: '#2a2a2a' } },
+              y: { ticks: { color: '#fff' }, grid: { color: '#2a2a2a' } }
+            }
+          }
+        });
+      },
+
+      renderAgentsTable(agents) {
+        const tbody = document.getElementById('agentsTableBody');
+        tbody.innerHTML = '';
+        if (agents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--sub);">No data for this area.</td></tr>';
+            return;
+        }
+        agents.forEach((agent, index) => {
+          const row = `<tr>
+            <td>${index + 1}</td>
+            <td>${agent.agent}</td>
+            <td>${agent.agency}</td>
+            <td>${agent.total}</td>
+          </tr>`;
+          tbody.innerHTML += row;
+        });
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => App.init());
+  </script>
 </body>
 </html>
