@@ -22,12 +22,13 @@
     .col-4{ grid-column:span 12; } .col-8{ grid-column:span 12; }
     .table-container { flex-grow: 1; overflow-y: auto; }
     @media(min-width:900px){ .col-4{ grid-column:span 4; } .col-8{ grid-column:span 8; } }
+    .ellipsis { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   </style>
   <script type='text/javascript' src='https://www.gstatic.com/charts/loader.js'></script>
   <script>
     // ## CONFIGURATION ##
-    // Paste your Google Apps Script Web App URL here
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwUxz34rLqeLQAzTWomdKKqBbUsyJlxxhf5HXOiOjx68cAemki07KnfuGNIGrC6h68s/exec';
+    // Final, working Web App URL
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbwFfPzPdIwPd5sNOKIuc49cuBPxpYcYNYRnc7IL9iTi5e_dsjBWfd6CpdLNT5RlhXnQ/exec';
 
     google.charts.load('current', {'packages':['corechart','bar']});
 
@@ -35,7 +36,6 @@
     function setLoading(is){ $('loading').style.display = is ? 'block' : 'none'; }
     function setError(msg){ var el=$('error'); el.textContent = msg || ''; el.style.display = msg ? 'block' : 'none'; }
 
-    // Fetches data from the Google Apps Script Web App
     async function fetchData(){
       setLoading(true); setError('');
       const muni = $('municipality').value || '';
@@ -49,7 +49,7 @@
         renderAll(payload);
       } catch (err) {
         setLoading(false);
-        setError(String(err));
+        setError("Error fetching data: " + String(err));
         console.error(err);
       }
     }
@@ -60,43 +60,37 @@
         const date = payload.date ? new Date(payload.date).toLocaleDateString('en-ZA', { timeZone: 'UTC'}) : '—';
         const agencies = payload.agencies || [];
         const agents = payload.agents || [];
-        const series = payload.timeseries || [];
-        const munis = payload.municipalities || [];
-        window.__lastDate = date; window.__lastAgencies = agencies; window.__lastAgents = agents; window.__lastSeries = series;
+        window.__lastAgencies = agencies; window.__lastAgents = agents;
 
-        const selMuni = $('municipality').value;
         const muniSelect = $('municipality');
-        const currentOptions = Array.from(muniSelect.options).map(o => o.value);
-        if (munis.length > 0 && currentOptions.length <= 1) {
-            muniSelect.innerHTML = '<option value="">All Municipalities</option>';
-            munis.forEach(m => {
+        if (muniSelect.options.length <= 1 && payload.municipalities && payload.municipalities.length > 0) {
+            payload.municipalities.forEach(m => {
                 const opt = document.createElement('option');
-                opt.value = m;
-                opt.textContent = m;
+                opt.value = m; opt.textContent = m;
                 muniSelect.appendChild(opt);
             });
-            muniSelect.value = selMuni;
         }
-
         $('latest').textContent = date;
 
         // KPIs
-        let kw = 0, exp = 0;
-        for (let i=0; i<agencies.length; i++){
-          const name = (agencies[i].agency||'').toLowerCase();
-          if (name.includes('keller williams explore')) kw = agencies[i].total||0;
-          if (name.includes('exp south africa')) exp = agencies[i].total||0;
-        }
-        $('kpi-kw').textContent = kw; $('kpi-exp').textContent = exp;
-        $('kpi-top-agency-name').textContent = agencies[0] ? agencies[0].agency : '—';
-        $('kpi-top-agency-val').textContent  = agencies[0] ? agencies[0].total : '—';
+        let kw = agencies.find(a => (a.agency||'').toLowerCase().includes('keller williams explore')) || { total: 0 };
+        $('kpi-kw').textContent = kw.total;
+
+        let topCompetitor = agencies.find(a => !(a.agency||'').toLowerCase().includes('keller williams explore')) || { agency: '—', total: 0 };
+        $('kpi-top-competitor-name').textContent = topCompetitor.agency;
+        $('kpi-top-competitor-val').textContent  = topCompetitor.total;
+
+        let topAgent = agents[0] || { agent: '—', agency: '—', total: 0 };
+        $('kpi-top-agent-name').textContent = topAgent.agent;
+        $('kpi-top-agent-agency').textContent = topAgent.agency;
+        $('kpi-top-agent-val').textContent = topAgent.total;
         
-        // Bar: Top 10 agencies
+        // Bar Chart: Top 10 Agencies
         const barData = new google.visualization.DataTable();
         barData.addColumn('string','Agency');
         barData.addColumn('number','Listings');
-        const top10 = agencies.slice(0,10);
-        top10.forEach(item => barData.addRow([item.agency, Number(item.total||0)]));
+        const top10Agencies = agencies.slice(0, 10);
+        top10Agencies.forEach(item => barData.addRow([item.agency, Number(item.total||0)]));
         const barOpts = {
           legend:{position:'none'}, backgroundColor:'transparent',
           chartArea:{ left:120, top:20, right:20, bottom:60 },
@@ -105,46 +99,21 @@
         };
         new google.visualization.BarChart($('bar')).draw(barData, barOpts);
 
-        // Line: Agency trends
-        const sel = series.slice(0,4);
-        const allDatesSet = new Set();
-        sel.forEach(s => s.points.forEach(p => allDatesSet.add(p.date)));
-        const allDates = Array.from(allDatesSet).sort();
-        const lineDataArr = [['Date']];
-        sel.forEach(s => lineDataArr[0].push(s.agency));
-        allDates.forEach(d => {
-            let row = [new Date(d)];
-            sel.forEach(s => {
-                let point = s.points.find(p => p.date === d);
-                row.push(point ? Number(point.total || 0) : null);
-            });
-            lineDataArr.push(row);
-        });
-        const lineData = google.visualization.arrayToDataTable(lineDataArr);
-        const lineOpts = {
-          backgroundColor:'transparent', legend:{ textStyle:{color:'#fff'} },
-          chartArea:{ left:60, top:20, right:20, bottom:40 },
-          hAxis:{ textStyle:{color:'#fff'}, format: 'MMM d', timeZone: 'UTC' },
-          vAxis:{ textStyle:{color:'#fff'}, gridlines: { color: '#333' } },
-          colors:['#FF3B30','#FF9500','#34C759','#0A84FF']
-        };
-        new google.visualization.LineChart($('line')).draw(lineData, lineOpts);
-
-        // Table: Top 50 agents + search
+        // Table: Top Agents
         applyAgentFilter();
-      } catch(e){ console.error(e); setError(String(e.stack)); }
+      } catch(e){ console.error(e); setError("Error rendering data: " + String(e.stack)); }
     }
 
     function applyAgentFilter(){
       const agents = window.__lastAgents || [];
       const q = ($('search').value || '').toLowerCase();
-      const filtered = q ? agents.filter(agent =>
-          (agent.agent||'').toLowerCase().includes(q) ||
-          (agent.agency||'').toLowerCase().includes(q)
+      const filtered = q ? agents.filter(a =>
+          (a.agent||'').toLowerCase().includes(q) || (a.agency||'').toLowerCase().includes(q)
       ) : agents;
 
       const tbody = $('agent-tbody'); tbody.innerHTML='';
-      filtered.forEach((item, index) => {
+      const top50Agents = filtered.slice(0, 50);
+      top50Agents.forEach((item, index) => {
         let tr = document.createElement('tr');
         tr.innerHTML = `<td>${index + 1}</td><td>${item.agent||''}</td><td>${item.agency||''}</td><td>${item.total||0}</td>`;
         tbody.appendChild(tr);
@@ -161,17 +130,15 @@
 </head>
 <body>
   <div class="wrap">
-    <h3 style="margin:4px 0 8px">KW Explore — Market Leaderboard</h3>
-
     <div class="card" style="margin-bottom:10px;">
       <div class="hdr">
         <div style="display:flex; gap:8px; align-items:center;">
-          <label class="muted">Municipality</label>
+          <label class="muted">Filter by Municipality</label>
           <select id="municipality"><option value="">All Municipalities</option></select>
         </div>
-        <div class="pill">Latest: <span id="latest">—</span></div>
+        <div class="pill">Latest Data: <span id="latest">—</span></div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <input id="search" placeholder="Search agents/agencies…" />
+          <input id="search" placeholder="Search agents..." />
           <button id="refresh">Refresh</button>
         </div>
       </div>
@@ -181,29 +148,29 @@
 
     <div class="row" style="margin-bottom:10px;">
       <div class="card col-4">
-        <div class="muted">KW Explore</div>
+        <div class="muted">KW Explore Listings</div>
         <div id="kpi-kw" class="kpi">0</div>
-        <div class="muted">Active listings</div>
       </div>
       <div class="card col-4">
-        <div class="muted">eXp South Africa</div>
-        <div id="kpi-exp" class="kpi">0</div>
-        <div class="muted">Active listings</div>
+        <div class="muted">Top Competitor Agency</div>
+        <div id="kpi-top-competitor-name" class="ellipsis" style="font-size:18px; font-weight:600;">—</div>
+        <div id="kpi-top-competitor-val" class="kpi" style="font-size:36px;">—</div>
       </div>
       <div class="card col-4">
-        <div class="muted">Top Agency</div>
-        <div id="kpi-top-agency-name" style="font-size:18px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">—</div>
-        <div id="kpi-top-agency-val" class="kpi" style="font-size:36px;">—</div>
+        <div class="muted">Top Overall Agent</div>
+        <div id="kpi-top-agent-name" class="ellipsis" style="font-size:18px; font-weight:600;">—</div>
+        <div id="kpi-top-agent-agency" class="muted ellipsis" style="margin-top:-4px;">—</div>
+        <div id="kpi-top-agent-val" class="kpi" style="font-size:36px;">—</div>
       </div>
     </div>
 
-    <div class="row" style="margin-bottom:10px; flex-grow: 1; min-height: 0;">
+    <div class="row" style="flex-grow: 1; min-height: 0;">
       <div class="card col-8">
-        <div class="hdr"><div>Top 10 Agencies</div><div class="pill">Listings</div></div>
+        <div class="hdr"><div>Top 10 Agencies by Listings</div></div>
         <div id="bar" style="height:100%;"></div>
       </div>
       <div class="card col-4">
-        <div class="hdr"><div>Top Agents</div><div class="pill">Top 50</div></div>
+        <div class="hdr"><div>Top Agents by Listings</div></div>
          <div class="table-container">
           <table>
             <thead><tr><th>#</th><th>Agent</th><th>Agency</th><th>Listings</th></tr></thead>
