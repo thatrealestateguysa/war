@@ -1,195 +1,404 @@
-/**
- * Web handler for the dashboard.
- * URL params:
- *   action=all
- *   suburbs=Paulshof,Lonehill  (optional)
- *   platform=All|Property24... (optional)
- *   entityType=All|Agent|Agency (optional)
- *   callback=cb                (optional, for JSONP)
- */
-function doGet(e) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('Master_Data');
-    if (!sheet) return _out({ success:false, error:'Sheet "Master_Data" not found.' }, e);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KW Explore • Market Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{ --kw-red:#C70000; --ink:#f2f2f2; --muted:#9aa0a6; --bg:#0b0b0c; --card:#121214; --border:#262626; --tab:#161616; --tab-grey:#232323; }
+  *{ box-sizing: border-box; }
+  body{ margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--ink); }
+  header{ background:var(--card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; }
+  .wrap{ max-width:1200px; margin:0 auto; padding:16px; }
+  .title{ display:flex; align-items:center; gap:12px; }
+  .logoWrap{ display:flex; align-items:center; gap:10px; }
+  .logo{ height:34px; display:block; }
+  .kwFallback{ width:34px; height:34px; border-radius:8px; background:var(--kw-red); display:none; }
+  h1{ font-size:20px; margin:0; }
+  .grid{ display:grid; grid-template-columns: 280px 1fr; gap:16px; margin-top:16px; }
+  @media (max-width: 960px){ .grid{ grid-template-columns: 1fr; } }
+  .panel{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+  .panel h2{ font-size:16px; margin:0 0 10px; }
+  label{ font-size:12px; color:var(--muted); display:block; margin:10px 0 4px; }
+  select, button{ width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:#0f0f10; color:var(--ink); }
+  button.primary{ background:var(--kw-red); color:#fff; border:none; font-weight:600; }
+  .row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .pill{ display:inline-block; font-size:11px; padding:3px 8px; background:#1f1f1f; color:#ddd; border-radius:999px; margin:0 6px 6px 0; }
+  .cards{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  @media (max-width: 1200px){ .cards{ grid-template-columns: 1fr; } }
+  table{ width:100%; border-collapse: collapse; font-size:13px; }
+  th, td{ padding:8px 10px; border-bottom:1px solid var(--border); }
+  th{ text-align:left; background:#0f0f10; position:sticky; top:0; color:var(--ink); }
+  .actions{ display:flex; gap:8px; }
+  .muted{ color:var(--muted); }
+  footer{ text-align:center; color:var(--muted); font-size:12px; padding:24px 0; }
+  .badge{ background:#fff3f3; color:var(--kw-red); border:1px solid #ffd6d6; padding:2px 6px; border-radius:6px; font-size:11px; }
+  .sep{ height:1px; background:#222; margin:10px 0 14px; }
+  .chartBox{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+  .tabs{ display:flex; gap:8px; margin:8px 0 0; }
+  .tab{ appearance:none; border:1px solid var(--border); background:var(--tab); color:var(--ink); padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600; }
+  .tab:hover{ background:var(--tab-grey); }
+  .tab.active{ background:var(--kw-red); border-color:#7f0000; color:#fff; }
+  .tabpane[hidden]{ display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="title">
+      <div class="logoWrap">
+        <img id="kwLogo" class="logo" src="KW%20Explore%20RED%20%26%20WHITE.png" alt="KW Explore" />
+        <div class="kwFallback" aria-hidden="true"></div>
+      </div>
+      <div>
+        <h1>KW Explore • Market Intelligence <span id="mockBadge" style="font-size:12px; margin-left:8px;" class="badge">Preview Mode</span></h1>
+        <div class="muted" id="updatedAt">Loading…</div>
+      </div>
+    </div>
+  </div>
+</header>
 
-    const values = sheet.getDataRange().getValues();
-    if (!values || values.length < 2) return _out({ success:false, error:'No data rows in Master_Data.' }, e);
+<main class="wrap">
+  <div class="grid">
+    <aside class="panel">
+      <h2>Filters</h2>
+      <label>Suburbs (multi-select)</label>
+      <select id="suburbs" multiple size="8"></select>
 
-    const headers = values[0].map(String);
-    const rows = values.slice(1);
+      <div class="row">
+        <div>
+          <label>Platform</label>
+          <select id="platform"><option>All</option></select>
+        </div>
+        <div>
+          <label>Entity Type</label>
+          <select id="entityType"><option>All</option></select>
+        </div>
+      </div>
 
-    // Column index helpers (tolerant to missing optional columns)
-    const idx = (name, fallback) => {
-      const i = headers.indexOf(name);
-      if (i === -1 && fallback !== undefined) return fallback;
-      if (i === -1) throw new Error('Missing column: ' + name);
-      return i;
-    };
+      <div class="sep"></div>
+      <div class="actions">
+        <button class="primary" id="applyBtn">Apply</button>
+        <button id="clearBtn">Clear</button>
+      </div>
 
-    const iSuburb     = idx('Suburb');
-    const iPlatform   = idx('Platform');
-    const iEntityType = idx('EntityType');
-    const iName       = idx('Name');
-    const iMetric     = idx('Metric');
-    const iCount      = idx('Count');
-    const iAgency     = headers.indexOf('Agency'); // optional
+      <div style="margin-top:10px;">
+        <span class="pill">TopAgentsListings</span>
+        <span class="pill">TopAgentsSales</span>
+        <span class="pill">TopAgencies</span>
+        <span class="pill">RecruitTargets</span>
+      </div>
 
-    // Parse filters
-    const qp = e && e.parameter ? e.parameter : {};
-    const action     = (qp.action || 'all').toLowerCase();
-    const platform   = qp.platform || 'All';
-    const entityType = qp.entityType || 'All';
-    const suburbsSel = (qp.suburbs || '').split(',').map(s => s.trim()).filter(Boolean);
+      <div style="margin-top:10px;">
+        <span class="badge">Tip</span>
+        <span class="muted">Hold Ctrl/Cmd to select multiple suburbs.</span>
+      </div>
+    </aside>
 
-    // Build filter options from ALL data (not filtered)
-    const setSuburbs  = new Set();
-    const setPlatforms= new Set();
-    const setEntities = new Set();
-    rows.forEach(r => {
-      setSuburbs.add(r[iSuburb]);
-      setPlatforms.add(r[iPlatform]);
-      setEntities.add(r[iEntityType]);
-    });
-    const filters = {
-      suburbs:   Array.from(setSuburbs).sort(),
-      platforms: Array.from(setPlatforms).sort(),
-      entityTypes: Array.from(setEntities).sort(),
-      metrics: ['Active Listings', 'Sold', 'Under Offer', 'Total Sales']
-    };
+    <section>
+      <div class="chartBox">
+        <h2 style="margin:0 0 10px;">Top Sales Agents by Suburb</h2>
+        <canvas id="salesChart" height="100"></canvas>
+      </div>
 
-    // Apply incoming filters
-    const filtered = rows.filter(r => {
-      if (suburbsSel.length && !suburbsSel.includes(String(r[iSuburb]))) return false;
-      if (platform !== 'All'   && String(r[iPlatform])   !== platform)   return false;
-      if (entityType !== 'All' && String(r[iEntityType]) !== entityType) return false;
-      return true;
-    });
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-target="tabSales">Sales</button>
+        <button class="tab" data-target="tabListings">Listings</button>
+        <button class="tab" data-target="tabAgencies">Agencies</button>
+        <button class="tab" data-target="tabRecruit">Recruit</button>
+      </div>
+      <div class="cards" style="margin-top:16px;">
+        <div class="panel tabpane" id="tabListings" hidden>
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Top Agents — Listings</h2>
+            <button id="dlListings">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblListings">
+              <thead><tr><th>Suburb</th><th>Agent</th><th>Agency</th><th>Active Listings</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
 
-    // Aggregate totals per Suburb + Person/Agency
-    const asNumber = (v) => Number(v) || 0;
+        <div class="panel tabpane" id="tabSales">
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Top Agents — Sales</h2>
+            <button id="dlSales">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblSales">
+              <thead><tr><th>Suburb</th><th>Agent</th><th>Agency</th><th>Sold</th><th>Under Offer</th><th>Total Sales</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
 
-    // ---- AGENTS ----
-    const agentAgg = new Map(); // key: suburb|name|agency
-    filtered
-      .filter(r => String(r[iEntityType]) === 'Agent')
-      .forEach(r => {
-        const suburb = String(r[iSuburb]);
-        const name   = String(r[iName]);
-        const agency = (iAgency !== -1 ? String(r[iAgency]) : '');
-        const metric = String(r[iMetric]);
-        const count  = asNumber(r[iCount]);
-        const key = [suburb, name, agency].join('|');
+        <div class="panel tabpane" id="tabAgencies" hidden>
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Top Agencies</h2>
+            <button id="dlAgencies">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblAgencies">
+              <thead><tr><th>Suburb</th><th>Top Agency (Active)</th><th>Active Listings</th><th>Top Agency (Sales)</th><th>Total Sales</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
 
-        if (!agentAgg.has(key)) agentAgg.set(key, {
-          suburb, agent:name, agency,
-          activeListings:0, sold:0, underOffer:0, totalSales:0
-        });
-        const obj = agentAgg.get(key);
-        if (metric === 'Active Listings') obj.activeListings += count;
-        if (metric === 'Sold')            obj.sold          += count;
-        if (metric === 'Under Offer')     obj.underOffer    += count;
-        obj.totalSales = obj.sold + obj.underOffer;
-      });
+        <div class="panel tabpane" id="tabRecruit" hidden>
+          <div class="actions" style="justify-content:space-between; align-items:center;">
+            <h2 style="margin:0;">Recruit Targets</h2>
+            <button id="dlRecruit">Download CSV</button>
+          </div>
+          <div style="max-height:360px; overflow:auto;">
+            <table id="tblRecruit">
+              <thead><tr><th>Suburb</th><th>Agent</th><th>Agency</th><th>Active</th><th>Sold</th><th>U/O</th><th>Total Sales</th><th>Strength</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="muted" style="margin-top:6px;">Excludes KW brands automatically.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
 
-    // top agents per suburb (listings)
-    const bySuburbAgent = Array.from(agentAgg.values()).reduce((m, r) => {
-      if (!m[r.suburb]) m[r.suburb] = [];
-      m[r.suburb].push(r);
-      return m;
-    }, {});
-    const TopAgentsListings = Object.keys(bySuburbAgent).map(suburb => {
-      const best = bySuburbAgent[suburb].slice().sort((a,b)=>b.activeListings - a.activeListings)[0];
-      return best ? { suburb, agent:best.agent, agency:best.agency, activeListings:best.activeListings } : null;
-    }).filter(Boolean);
+<footer>
+  Built for KW Explore • Update the API URL in this file to your Apps Script Web App.
+</footer>
 
-    // top agents per suburb (sales)
-    const TopAgentsSales = Object.keys(bySuburbAgent).map(suburb => {
-      const best = bySuburbAgent[suburb].slice().sort((a,b)=> (b.totalSales - a.totalSales) || (b.sold - a.sold) )[0];
-      return best ? {
-        suburb, agent:best.agent, agency:best.agency,
-        sold:best.sold, underOffer:best.underOffer, totalSales:best.totalSales
-      } : null;
-    }).filter(Boolean);
-
-    // ---- AGENCIES ----
-    const agencyAgg = new Map(); // key: suburb|agency
-    filtered
-      .filter(r => String(r[iEntityType]) === 'Agency')
-      .forEach(r => {
-        const suburb = String(r[iSuburb]);
-        const agency = iAgency !== -1 ? String(r[iAgency]) : String(r[iName]); // fallback to Name
-        const metric = String(r[iMetric]);
-        const count  = asNumber(r[iCount]);
-        const key = [suburb, agency].join('|');
-
-        if (!agencyAgg.has(key)) agencyAgg.set(key, {
-          suburb, agency,
-          activeListings:0, sold:0, underOffer:0, totalSales:0
-        });
-        const obj = agencyAgg.get(key);
-        if (metric === 'Active Listings') obj.activeListings += count;
-        if (metric === 'Sold')            obj.sold          += count;
-        if (metric === 'Under Offer')     obj.underOffer    += count;
-        obj.totalSales = obj.sold + obj.underOffer;
-      });
-
-    // top agency per suburb (active & sales)
-    const bySuburbAgency = Array.from(agencyAgg.values()).reduce((m, r) => {
-      if (!m[r.suburb]) m[r.suburb] = [];
-      m[r.suburb].push(r);
-      return m;
-    }, {});
-    const TopAgencies = Object.keys(bySuburbAgency).map(suburb => {
-      const list = bySuburbAgency[suburb];
-      const topActive = list.slice().sort((a,b)=>b.activeListings - a.activeListings)[0];
-      const topSales  = list.slice().sort((a,b)=>b.totalSales    - a.totalSales)[0];
-      return {
-        suburb,
-        topAgencyActive: topActive ? topActive.agency : '',
-        activeListings:  topActive ? topActive.activeListings : 0,
-        topAgencySales:  topSales  ? topSales.agency  : '',
-        totalSales:      topSales  ? topSales.totalSales : 0
-      };
-    });
-
-    // ---- Recruit targets (exclude KW brands) ----
-    const excludeKW = (s) => (s||'').toLowerCase().includes('keller') || (s||'').toLowerCase().includes('kw');
-    const targets = Array.from(agentAgg.values())
-      .filter(r => !excludeKW(r.agency))
-      .map(r => {
-        const strength = r.totalSales > r.activeListings ? 'Sales' :
-                         r.activeListings > r.totalSales ? 'Listings' : 'Balanced';
-        return { ...r, strength };
-      });
-
-    // take the top 3 per suburb by totalSales, then by activeListings
-    const RecruitTargets = Object.keys(bySuburbAgent).flatMap(suburb => {
-      return targets
-        .filter(t => t.suburb === suburb)
-        .sort((a,b)=> (b.totalSales - a.totalSales) || (b.activeListings - a.activeListings))
-        .slice(0, 3);
-    });
-
-    const payload = {
-      success: true,
-      updatedAt: new Date().toISOString(),
-      filters,
-      summaries: { TopAgentsListings, TopAgentsSales, TopAgencies, RecruitTargets }
-    };
-
-    return _out(payload, e);
-
-  } catch (err) {
-    return _out({ success:false, error:String(err) }, e);
+<script>
+/** ===== CONFIG ===== */
+/* Your live Apps Script Web App URL */
+const GAS_URL = 'PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE';
+// ---- MOCK DATA MODE - Always ON for this preview ----
+const USE_MOCK = true;
+const MOCK = {
+  success: true,
+  updatedAt: new Date().toISOString(),
+  filters: {
+    suburbs: ['Sandton', 'Fourways', 'Midrand', 'Bryanston'],
+    platforms: ['Property24', 'Private Property'],
+    entityTypes: ['Agent', 'Agency'],
+    metrics: ['Active Listings', 'Sold', 'Under Offer', 'Total Sales']
+  },
+  summaries: {
+    TopAgentsListings: [
+      { suburb: 'Sandton', agent: 'Jane Doe', agency: 'Prestige Properties', activeListings: 12 },
+      { suburb: 'Fourways', agent: 'John Smith', agency: 'Urban Realty', activeListings: 9 },
+      { suburb: 'Midrand', agent: 'Emily White', agency: 'City Homes', activeListings: 8 },
+      { suburb: 'Bryanston', agent: 'Michael Green', agency: 'Luxe Estates', activeListings: 7 }
+    ],
+    TopAgentsSales: [
+      { suburb: 'Sandton', agent: 'Jane Doe', agency: 'Prestige Properties', sold: 8, underOffer: 3, totalSales: 11 },
+      { suburb: 'Fourways', agent: 'Peter Jones', agency: 'Urban Realty', sold: 6, underOffer: 4, totalSales: 10 },
+      { suburb: 'Midrand', agent: 'Sarah Brown', agency: 'City Homes', sold: 7, underOffer: 1, totalSales: 8 },
+      { suburb: 'Bryanston', agent: 'Michael Green', agency: 'Luxe Estates', sold: 5, underOffer: 2, totalSales: 7 }
+    ],
+    TopAgencies: [
+      { suburb: 'Sandton', topAgencyActive: 'Prestige Properties', activeListings: 45, topAgencySales: 'Prestige Properties', totalSales: 38 },
+      { suburb: 'Fourways', topAgencyActive: 'Urban Realty', activeListings: 32, topAgencySales: 'Competitor Inc', totalSales: 30 },
+      { suburb: 'Midrand', topAgencyActive: 'City Homes', activeListings: 28, topAgencySales: 'City Homes', totalSales: 25 },
+      { suburb: 'Bryanston', topAgencyActive: 'Luxe Estates', activeListings: 25, topAgencySales: 'Luxe Estates', totalSales: 22 }
+    ],
+    RecruitTargets: [
+      { suburb: 'Sandton', agent: 'Chris Davis', agency: 'Competitor Inc', activeListings: 6, sold: 7, underOffer: 2, totalSales: 9, strength: 'Sales' },
+      { suburb: 'Sandton', agent: 'Anna Miller', agency: 'Indie Realty', activeListings: 8, sold: 4, underOffer: 1, totalSales: 5, strength: 'Listings' },
+      { suburb: 'Fourways', agent: 'Peter Jones', agency: 'Urban Realty', activeListings: 5, sold: 6, underOffer: 4, totalSales: 10, strength: 'Sales' },
+      { suburb: 'Midrand', agent: 'David Wilson', agency: 'Mega Corp Realty', activeListings: 7, sold: 5, underOffer: 2, totalSales: 7, strength: 'Balanced' }
+    ]
   }
+};
+
+/** ===== APP STATE ===== */
+const App = {
+  raw: null,
+  chart: null,
+  currentFilters: { suburbs: [], platform: 'All', entityType: 'All' },
+
+  jsonp(url, cbName) {
+    return new Promise((resolve) => {
+      const id = 'cb_' + Math.random().toString(36).slice(2);
+      window[id] = (data) => { resolve(data); delete window[id]; script.remove(); };
+      const script = document.createElement('script');
+      script.src = url + (url.includes('?') ? '&' : '?') + `${cbName}=${id}`;
+      script.onerror = () => {
+        resolve({ success:false, error:'JSONP failed to load' });
+        delete window[id];
+        script.remove();
+      };
+      document.body.appendChild(script);
+    });
+  },
+
+  async fetchJSON(url) {
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      return { success:false, error:String(e) };
+    }
+  },
+
+  async fetchData() {
+    if (USE_MOCK) { App.raw = MOCK; App.renderAll(); return; }
+    const { suburbs, platform, entityType } = App.currentFilters;
+    const params = new URLSearchParams({
+      action: 'all',
+      suburbs: suburbs.join(','),
+      platform,
+      entityType
+    });
+    const base = `${GAS_URL}?${params.toString()}`;
+    let data = await App.jsonp(base, 'callback');
+    if (!data || data.success === false) { data = await App.fetchJSON(base); }
+
+    if (!data || data.success === false) {
+      document.getElementById('updatedAt').textContent = 'Error loading data. Check GAS_URL and deployment settings.';
+      console.error('API error:', data && data.error);
+      return;
+    }
+
+    App.raw = data;
+    App.renderAll();
+  },
+
+  renderAll() {
+    const d = App.raw;
+    document.getElementById('updatedAt').textContent = `Updated ${new Date(d.updatedAt).toLocaleString()}`;
+    document.getElementById('mockBadge').style.display = USE_MOCK ? 'inline-block' : 'none';
+    App.populateFilters(d.filters);
+    App.renderTable('tblListings', d.summaries.TopAgentsListings, ['suburb','agent','agency','activeListings']);
+    App.renderTable('tblSales', d.summaries.TopAgentsSales, ['suburb','agent','agency','sold','underOffer','totalSales']);
+    App.renderTable('tblAgencies', d.summaries.TopAgencies, ['suburb','topAgencyActive','activeListings','topAgencySales','totalSales']);
+    App.renderTable('tblRecruit', d.summaries.RecruitTargets, ['suburb','agent','agency','activeListings','sold','underOffer','totalSales','strength']);
+    App.drawSalesChart(d.summaries.TopAgentsSales);
+  },
+
+  populateFilters(f) {
+    const subs = document.getElementById('suburbs');
+    if (!subs.options.length) {
+      f.suburbs.forEach(s => subs.add(new Option(s, s)));
+      const plat = document.getElementById('platform');
+      plat.innerHTML = '<option>All</option>' + f.platforms.map(p=>`<option>${p}</option>`).join('');
+      const et = document.getElementById('entityType');
+      et.innerHTML = '<option>All</option>' + f.entityTypes.map(p=>`<option>${p}</option>`).join('');
+    }
+  },
+
+  drawSalesChart(rows) {
+    const labels = rows.map(r => `${r.suburb} — ${r.agent}`);
+    const values = rows.map(r => r.totalSales);
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    if (App.chart) App.chart.destroy();
+    App.chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Total Sales', data: values, backgroundColor: '#C70000' }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color:'#e0e0e0' }, grid: { color: '#222' } },
+          y: { beginAtZero: true, ticks: { color:'#e0e0e0', stepSize: 1 }, grid: { color: '#222' } }
+        }
+      }
+    });
+  },
+
+  renderTable(id, rows, cols) {
+    const tb = document.querySelector(`#${id} tbody`);
+    tb.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      cols.forEach(c => {
+        const td = document.createElement('td');
+        td.textContent = r[c] == null ? '' : r[c];
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  },
+
+  downloadCSV(key) {
+    if (!App.raw) return;
+    const map = {
+      TopAgentsListings: ['suburb','agent','agency','activeListings'],
+      TopAgentsSales: ['suburb','agent','agency','sold','underOffer','totalSales'],
+      TopAgencies: ['suburb','topAgencyActive','activeListings','topAgencySales','totalSales'],
+      RecruitTargets: ['suburb','agent','agency','activeListings','sold','underOffer','totalSales','strength']
+    };
+    const cols = map[key];
+    const rows = App.raw.summaries[key] || [];
+    const csv = [cols.join(',')].concat(rows.map(r => cols.map(c => '"' + String(r[c]??'').replace(/"/g,'""') + '"').join(','))).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${key}.csv` });
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+};
+
+if (window.Chart && Chart.defaults) { Chart.defaults.color = '#e5e5e5'; }
+
+function initTabs(){
+  const tabs = document.querySelectorAll('.tab');
+  const panes = document.querySelectorAll('.tabpane');
+  tabs.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      tabs.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.getAttribute('data-target');
+      panes.forEach(p => p.hidden = (p.id !== target));
+    });
+  });
+}
+function initDownloads(){
+  const map = { dlListings:'TopAgentsListings', dlSales:'TopAgentsSales', dlAgencies:'TopAgencies', dlRecruit:'RecruitTargets' };
+  Object.entries(map).forEach(([id,key])=>{
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', ()=> App.downloadCSV(key));
+  });
 }
 
-/** JSON/JSONP output helper */
-function _out(obj, e) {
-  const cb = e && e.parameter && e.parameter.callback;
-  const text = cb ? (cb + '(' + JSON.stringify(obj) + ');') : JSON.stringify(obj);
-  const out = ContentService.createTextOutput(text);
-  out.setMimeType(cb ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
-  return out;
-}
+window.addEventListener('load', ()=>{
+  const img = document.getElementById('kwLogo');
+  function fallback(){
+    if (!img) return;
+    img.style.display = 'none';
+    const fb = document.querySelector('.kwFallback');
+    if (fb) fb.style.display = 'block';
+  }
+  if (!img.complete || img.naturalWidth === 0) fallback();
+  img.addEventListener('error', fallback);
+});
+
+initTabs();
+initDownloads();
+
+document.getElementById('applyBtn').addEventListener('click', ()=>{
+  const suburbs = Array.from(document.getElementById('suburbs').selectedOptions).map(o=>o.value);
+  const platform = document.getElementById('platform').value;
+  const entityType = document.getElementById('entityType').value;
+  App.currentFilters = { suburbs, platform, entityType };
+  App.fetchData();
+});
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  document.getElementById('suburbs').selectedIndex = -1;
+  document.getElementById('platform').value = 'All';
+  document.getElementById('entityType').value = 'All';
+  App.currentFilters = { suburbs: [], platform: 'All', entityType: 'All' };
+  App.fetchData();
+});
+
+App.fetchData();
+window.App = App;
+</script>
+</body>
+</html>
